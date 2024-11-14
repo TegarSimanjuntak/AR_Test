@@ -56,6 +56,7 @@
       let isDragging = false;
       let lastX = 0;
       let lastY = 0;
+      let scale = 0.3;
 
       // Update model size and position
       function updateModelSize() {
@@ -65,44 +66,80 @@
          // Menentukan ukuran model berdasarkan ukuran layar
          const scaleX = screenWidth / 1000; 
          const scaleY = screenHeight / 1000; 
-         const scale = `${Math.min(scaleX, scaleY)} ${Math.min(scaleX, scaleY)} ${Math.min(scaleX, scaleY)}`;
+         const adjustedScale = Math.min(scaleX, scaleY) * scale;
 
-         // Menyesuaikan skala model
-         model.setAttribute("scale", scale);
+         model.setAttribute("scale", `${adjustedScale} ${adjustedScale} ${adjustedScale}`);
 
          // Posisi model agar tetap di tengah layar
-         model.setAttribute("position", "0 -3 -20");
+         model.setAttribute("position", "0 -1 -5");
+
          // Menentukan ukuran anotasi berdasarkan ukuran layar
-        const annotationSize = Math.max(10, Math.min(20, screenWidth / 50));
-        annotation.style.width = `${annotationSize}px`;
-        annotation.style.height = `${annotationSize}px`;
+         const annotationSize = Math.max(10, Math.min(20, screenWidth / 50));
+         annotation.style.width = `${annotationSize}px`;
+         annotation.style.height = `${annotationSize}px`;
       }
 
       function updateAnnotationPosition() {
-        const vector = new THREE.Vector3(1, 1, -1);
-        vector.applyMatrix4(model.object3D.matrixWorld);
-        vector.project(model.sceneEl.camera);
+         const vector = new THREE.Vector3(1, 1, -1);
+         vector.applyMatrix4(model.object3D.matrixWorld);
+         vector.project(model.sceneEl.camera);
 
-        const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
-        const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
+         const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+         const y = -(vector.y * 0.5 - 0.5) * window.innerHeight;
 
-        // Menentukan apakah anotasi berada di depan atau di belakang kamera
-        const cameraPosition = camera.object3D.position;
-        const annotationWorldPosition = new THREE.Vector3();
-        model.object3D.getWorldPosition(annotationWorldPosition);
+         // Menentukan apakah anotasi berada di depan atau di belakang kamera
+         const cameraPosition = camera.object3D.position;
+         const annotationWorldPosition = new THREE.Vector3();
+         model.object3D.getWorldPosition(annotationWorldPosition);
 
-        const isBehind = annotationWorldPosition.z > cameraPosition.z;
+         const isBehind = annotationWorldPosition.z > cameraPosition.z;
 
-        // Jika di belakang, kurangi opacity; jika di depan, tampilkan normal
-        annotation.style.backgroundColor = isBehind ? "pink" : "rgba(255, 0, 0, 0.8)";
+         // Jika di belakang, ubah warna menjadi pink; jika di depan, kembalikan ke merah
+         annotation.style.backgroundColor = isBehind ? "pink" : "rgba(255, 0, 0, 0.8)";
 
-        annotation.style.left = `${x}px`;
-        annotation.style.top = `${y}px`;
-        annotation.style.display = "block";
+         annotation.style.left = `${x}px`;
+         annotation.style.top = `${y}px`;
+         annotation.style.display = "block";
 
-        requestAnimationFrame(updateAnnotationPosition);
-        }
+         requestAnimationFrame(updateAnnotationPosition);
+      }
 
+      // Zoom in/out based on scroll or pinch
+      function handleZoom(event) {
+         if (event.deltaY) {
+            // Mouse scroll
+            const zoomFactor = 0.05;
+            scale += event.deltaY > 0 ? -zoomFactor : zoomFactor;
+            scale = Math.max(0.1, Math.min(1.5, scale));
+            updateModelSize();
+         }
+      }
+
+      let lastTouchDistance = 0;
+      window.addEventListener("wheel", handleZoom);
+
+      // Function to handle touch-based zoom (pinch gesture)
+      function handleTouchZoom(event) {
+         if (event.touches.length === 2) {
+            const touchDistance = Math.hypot(
+               event.touches[0].pageX - event.touches[1].pageX,
+               event.touches[0].pageY - event.touches[1].pageY
+            );
+            if (lastTouchDistance) {
+               scale += (touchDistance - lastTouchDistance) * 0.001;
+               scale = Math.max(0.1, Math.min(1.5, scale));
+               updateModelSize();
+            }
+            lastTouchDistance = touchDistance;
+         }
+      }
+
+      function resetTouchDistance() {
+         lastTouchDistance = 0;
+      }
+
+      window.addEventListener("touchmove", handleTouchZoom);
+      window.addEventListener("touchend", resetTouchDistance);
 
       // Handle annotation click
       annotation.addEventListener("click", () => {
@@ -125,8 +162,9 @@
       // Event listener on window resize
       window.addEventListener("resize", updateModelSize);
 
-      // Event listeners for dragging the model (mouse and touch)
+      // Dragging functionality
       function startDrag(event) {
+         if (event.touches && event.touches.length > 1) return; // Ignore if pinch gesture
          isDragging = true;
          lastX = event.clientX || event.touches[0].clientX;
          lastY = event.clientY || event.touches[0].clientY;
